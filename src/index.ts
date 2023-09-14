@@ -1,35 +1,37 @@
-import { Telegraf } from 'telegraf';
-import { message } from 'telegraf/filters';
-import dotenv from 'dotenv';
+import expres, { Application } from 'express';
+import { ConfigService } from './config/config.service';
+import { Client } from '@notionhq/client';
 
-import { createNote } from './services/notion.service';
+import { Bot } from './bot.class';
+import { Archiver } from './services/archiver.class';
 
-dotenv.config();
+class Server {
+  private app: Application;
+  private port: number;
 
-const TELEGRAM_TOKEN: string = process.env.TELEGRAM_TOKEN
-  ? process.env.TELEGRAM_TOKEN.toString()
-  : '';
+  constructor(port: number) {
+    this.app = expres();
+    this.port = port;
 
-const bot = new Telegraf(TELEGRAM_TOKEN, {
-  handlerTimeout: Infinity,
-});
-
-bot.start((ctx) => {
-  ctx.reply('Welcome to the Notion Archiver Bot');
-});
-
-bot.on(message('text'), async (ctx) => {
-  try {
-    const text: string = ctx.message.text;
-
-    if (!text.trim()) {
-      ctx.reply('Please write some text');
-    }
-
-    const notionResponse = await createNote(text, text);
-  } catch (error) {
-    console.log(error);
+    this.app.use(expres.json());
   }
-});
 
-bot.launch();
+  public start(): void {
+    this.app.listen(this.port, () => {
+      console.log(`Server started on port ${this.port}. . .`);
+    });
+  }
+}
+
+const config = new ConfigService();
+const port = parseInt(config.get('PORT')) || 8000;
+
+const server = new Server(port);
+const notion = new Client({
+  auth: config.get('NOTION_SECRET'),
+});
+const archiver = new Archiver(config.get('NOTION_DB_ID'), notion);
+const bot = new Bot(config, archiver);
+
+server.start();
+bot.init();
