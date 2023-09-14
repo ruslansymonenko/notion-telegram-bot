@@ -1,57 +1,37 @@
-import { Telegraf, session } from 'telegraf';
+import expres, { Application } from 'express';
 import { ConfigService } from './config/config.service';
+import { Client } from '@notionhq/client';
 
-import { createNote } from './services/notion.service';
-import { IConfigService } from './config/config.interface';
-import { IBotContext } from './context/context.interface';
-import { Command } from './commannds/command.class';
-import { StartCommand } from './commannds/start.command';
+import { Bot } from './bot.class';
+import { Archiver } from './services/archiver.class';
 
-// const TELEGRAM_TOKEN: string = process.env.TELEGRAM_TOKEN
-//   ? process.env.TELEGRAM_TOKEN.toString()
-//   : '';
+class Server {
+  private app: Application;
+  private port: number;
 
-// const bot = new Telegraf(TELEGRAM_TOKEN, {
-//   handlerTimeout: Infinity,
-// });
+  constructor(port: number) {
+    this.app = expres();
+    this.port = port;
 
-// bot.start((ctx) => {
-//   ctx.reply('Welcome to the Notion Archiver Bot');
-// });
-
-// bot.on(message('text'), async (ctx) => {
-//   try {
-//     const text: string = ctx.message.text;
-
-//     if (!text.trim()) {
-//       ctx.reply('Please write some text');
-//     }
-
-//     const notionResponse = await createNote(text, text);
-//   } catch (error) {
-//     console.log(error);
-//   }
-// });
-
-// bot.launch();
-
-class Bot {
-  bot: Telegraf<IBotContext>;
-  commands: Command[] = [];
-
-  constructor(private readonly configService: IConfigService) {
-    this.bot = new Telegraf<IBotContext>(this.configService.get('TELEGRAM_TOKEN'));
-    this.bot.use(session());
+    this.app.use(expres.json());
   }
 
-  init() {
-    this.commands = [new StartCommand(this.bot)];
-    for (const command of this.commands) {
-      command.handle();
-    }
-    this.bot.launch();
+  public start(): void {
+    this.app.listen(this.port, () => {
+      console.log(`Server started on port ${this.port}. . .`);
+    });
   }
 }
 
-const bot = new Bot(new ConfigService());
+const config = new ConfigService();
+const port = parseInt(config.get('PORT')) || 8000;
+
+const server = new Server(port);
+const notion = new Client({
+  auth: config.get('NOTION_SECRET'),
+});
+const archiver = new Archiver(config.get('NOTION_DB_ID'), notion);
+const bot = new Bot(config, archiver);
+
+server.start();
 bot.init();
